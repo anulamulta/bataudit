@@ -77,12 +77,13 @@ func connectDB() *gorm.DB {
 func connectRedis() *queue.RedisQueue {
 	const maxRetries = 5
 	address := config.GetEnv("REDIS_ADDRESS", "localhost:6379")
-	slog.Info("Connecting to Redis", "address", address)
+	db := config.GetEnvAsInt("REDIS_DB", 0)
+	slog.Info("Connecting to Redis", "address", address, "db", db)
 	var rq *queue.RedisQueue
 	var err error
 	for i := 0; i < maxRetries; i++ {
 		slog.Info("Connecting to Redis", "attempt", i+1, "max_retries", maxRetries)
-		rq, err = queue.NewRedisQueue(address, queue.DefaultQueueName)
+		rq, err = queue.NewRedisQueue(address, db, queue.DefaultQueueName)
 		if err == nil {
 			slog.Info("Redis connection established")
 			return rq

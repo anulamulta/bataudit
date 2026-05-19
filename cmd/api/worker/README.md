@@ -70,6 +70,7 @@ Worker count is always clamped between `WORKER_MIN_COUNT` and `WORKER_MAX_COUNT`
 | `WORKER_SCALE_FACTOR` | `BATAUDIT_WORKER_SCALE_FACTOR` | `2.0` | Scaling multiplier |
 | `COOLDOWN_PERIOD` | `BATAUDIT_COOLDOWN_PERIOD` | `15s` | Cooldown between scale decisions |
 | `REDIS_ADDRESS` | `BATAUDIT_REDIS_ADDRESS` | `localhost:6379` | Redis address |
+| `REDIS_DB` | `BATAUDIT_REDIS_DB` | `0` | Redis logical database (0-15) |
 | `QUEUE_NAME` | `BATAUDIT_QUEUE_NAME` | `bataudit:events` | Redis queue key |
 | `DB_HOST` | — | `localhost` | Database host |
 | `DB_PORT` | — | `5432` | Database port |

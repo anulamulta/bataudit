@@ -12,14 +12,15 @@ import (
 	"github.com/joaovrmoraes/bataudit/internal/queue"
 )
 
-// ConnectToRedisWithRetry tries to connect to Redis with exponential backoff
-func ConnectToRedisWithRetry(address, queueName string, maxRetries int) (*queue.RedisQueue, error) {
+// ConnectToRedisWithRetry tries to connect to Redis with exponential backoff.
+// `db` is the Redis logical database (0-15); pass 0 for default behaviour.
+func ConnectToRedisWithRetry(address string, db int, queueName string, maxRetries int) (*queue.RedisQueue, error) {
 	var redisQueue *queue.RedisQueue
 	var err error
 
 	for i := 0; i < maxRetries; i++ {
 		slog.Info("Connecting to Redis", "attempt", i+1, "max_retries", maxRetries)
-		redisQueue, err = queue.NewRedisQueue(address, queueName)
+		redisQueue, err = queue.NewRedisQueue(address, db, queueName)
 		if err == nil {
 			slog.Info("Redis connection established")
 			return redisQueue, nil

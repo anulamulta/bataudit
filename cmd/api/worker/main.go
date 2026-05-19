@@ -37,6 +37,7 @@ func main() {
 
 	redisQueue, err := worker.ConnectToRedisWithRetry(
 		cfg.RedisAddress,
+		cfg.RedisDB,
 		cfg.QueueName,
 		maxRetries,
 	)

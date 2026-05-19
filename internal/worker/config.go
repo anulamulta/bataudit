@@ -24,6 +24,7 @@ type Config struct {
 
 	// Redis configuration
 	RedisAddress string
+	RedisDB      int
 	QueueName    string
 }
 
@@ -46,6 +47,7 @@ func DefaultConfig() *Config {
 
 		// Redis configuration
 		RedisAddress: "localhost:6379",
+		RedisDB:      0,
 		QueueName:    queue.DefaultQueueName,
 	}
 }
