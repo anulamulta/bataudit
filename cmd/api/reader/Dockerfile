@@ -1,7 +1,10 @@
 ## Stage 1: build the React frontend
 # Node 22+ required: frontend dep imports `node:sqlite` (built-in module only in 22+).
+# pnpm pinned to 9.x — pnpm 10 trata `ignored builds` (biome/tailwind/esbuild) como
+# erro fatal mesmo com `onlyBuiltDependencies` no package.json. pnpm 9 mantém o
+# comportamento legacy (warning, install completes).
 FROM node:22-alpine AS frontend-builder
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@9.15.4 --activate
 WORKDIR /frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile --shamefully-hoist
