@@ -1,5 +1,6 @@
 ## Stage 1: build the React frontend
-FROM node:20-alpine AS frontend-builder
+# Node 22+ required: frontend dep imports `node:sqlite` (built-in module only in 22+).
+FROM node:22-alpine AS frontend-builder
 RUN corepack enable && corepack prepare pnpm@latest --activate
 WORKDIR /frontend
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
