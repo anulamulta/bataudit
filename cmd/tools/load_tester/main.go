@@ -25,6 +25,7 @@ var (
 	apiURL       = flag.String("api", "http://localhost:8081/audit", "API endpoint URL")
 	mode         = flag.String("mode", "api", "Mode to run in: 'api' (send to API) or 'redis' (direct to Redis)")
 	redisAddr    = flag.String("redis", "localhost:6379", "Redis server address (used only in redis mode)")
+	redisDB      = flag.Int("redis-db", 0, "Redis logical database 0-15 (used only in redis mode)")
 	queueName    = flag.String("queue", queue.DefaultQueueName, "Queue name for sending events (used only in redis mode)")
 )
 
@@ -106,7 +107,7 @@ func main() {
 	if *mode == "redis" {
 		// Connect to Redis
 		var err error
-		redisQueue, err = queue.NewRedisQueue(*redisAddr, *queueName)
+		redisQueue, err = queue.NewRedisQueue(*redisAddr, *redisDB, *queueName)
 		if err != nil {
 			fmt.Printf("Error connecting to Redis: %v\n", err)
 			return

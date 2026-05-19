@@ -124,6 +124,19 @@ func ConfigureFromEnv(config *Config) {
 		config.RedisAddress = val
 	}
 
+	// REDIS_DB lets the worker target a specific Redis logical database (0-15).
+	// Default is 0. Useful in multi-tenant Redis setups where other services
+	// share the instance.
+	if val := os.Getenv("REDIS_DB"); val != "" {
+		if db, err := strconv.Atoi(val); err == nil && db >= 0 && db <= 15 {
+			config.RedisDB = db
+		}
+	} else if val := os.Getenv("BATAUDIT_REDIS_DB"); val != "" {
+		if db, err := strconv.Atoi(val); err == nil && db >= 0 && db <= 15 {
+			config.RedisDB = db
+		}
+	}
+
 	if val := os.Getenv("QUEUE_NAME"); val != "" {
 		config.QueueName = val
 	} else if val := os.Getenv("BATAUDIT_QUEUE_NAME"); val != "" {

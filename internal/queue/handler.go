@@ -17,10 +17,14 @@ type RedisQueue struct {
 	queue  string
 }
 
-// NewRedisQueue - creates a new RedisQueue instance
-func NewRedisQueue(addr string, queue string) (*RedisQueue, error) {
+// NewRedisQueue - creates a new RedisQueue instance.
+// `db` is the Redis logical database (0-15). Useful when sharing a Redis
+// instance across services that need isolated keyspaces (e.g. BatAudit on
+// db 3 while other apps use db 0-2).
+func NewRedisQueue(addr string, db int, queue string) (*RedisQueue, error) {
 	client := redis.NewClient(&redis.Options{
 		Addr: addr,
+		DB:   db,
 	})
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
