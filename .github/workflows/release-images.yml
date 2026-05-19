@@ -1,0 +1,143 @@
+name: Release Images
+
+# Build + push das 3 imagens BatAudit (writer, worker, reader) em ECR
+# `240806822693.dkr.ecr.us-east-1.amazonaws.com/anulamulta/bataudit-*` (ARM64,
+# target t4g.small Graviton).
+#
+# Trigger: push de tag `v*` (release tags) ou workflow_dispatch manual.
+# OIDC: assume `arn:aws:iam::240806822693:role/github-actions-deploy-staging`
+# que confia neste repo + tags v* (cross-org trust policy em
+# anulamulta-platform/infrastructure/environments/staging/oidc.tf — ANU-115).
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v0.1.0). Required for manual dispatch."
+        required: true
+        type: string
+
+permissions:
+  id-token: write   # OIDC token federation
+  contents: read
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCOUNT_ID: "240806822693"
+  ECR_REGISTRY: 240806822693.dkr.ecr.us-east-1.amazonaws.com
+  ROLE_ARN: arn:aws:iam::240806822693:role/github-actions-deploy-staging
+
+jobs:
+  build-and-push:
+    name: Build & push (${{ matrix.service }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [writer, worker, reader]
+
+    outputs:
+      version_tag: ${{ steps.resolve-tag.outputs.tag }}
+      short_sha: ${{ steps.resolve-tag.outputs.short_sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve release tag + short SHA
+        id: resolve-tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          else
+            TAG="${GITHUB_REF#refs/tags/}"
+          fi
+          SHORT_SHA="${GITHUB_SHA:0:7}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${SHORT_SHA}" >> "$GITHUB_OUTPUT"
+          echo "Building tag=${TAG} short_sha=${SHORT_SHA}"
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up QEMU (ARM64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build + push ${{ matrix.service }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: cmd/api/${{ matrix.service }}/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/anulamulta/bataudit-${{ matrix.service }}:${{ steps.resolve-tag.outputs.tag }}
+            ${{ env.ECR_REGISTRY }}/anulamulta/bataudit-${{ matrix.service }}:${{ steps.resolve-tag.outputs.short_sha }}
+            ${{ env.ECR_REGISTRY }}/anulamulta/bataudit-${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  scan:
+    name: ECR scan (${{ matrix.service }})
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [writer, worker, reader]
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Wait for ECR scan to complete
+        run: |
+          set -euo pipefail
+          REPO="anulamulta/bataudit-${{ matrix.service }}"
+          TAG="${{ needs.build-and-push.outputs.version_tag }}"
+          echo "Waiting for scan on ${REPO}:${TAG}..."
+          aws ecr wait image-scan-complete \
+            --repository-name "${REPO}" \
+            --image-id imageTag="${TAG}" \
+            --region "${AWS_REGION}"
+
+      - name: Fail on CRITICAL findings
+        run: |
+          set -euo pipefail
+          REPO="anulamulta/bataudit-${{ matrix.service }}"
+          TAG="${{ needs.build-and-push.outputs.version_tag }}"
+          CRITICAL=$(aws ecr describe-image-scan-findings \
+            --repository-name "${REPO}" \
+            --image-id imageTag="${TAG}" \
+            --region "${AWS_REGION}" \
+            --query 'imageScanFindings.findingSeverityCounts.CRITICAL' \
+            --output text)
+          # AWS retorna "None" se zero findings dessa severidade.
+          if [ "${CRITICAL}" != "None" ] && [ "${CRITICAL}" -gt 0 ]; then
+            echo "::error::Image ${REPO}:${TAG} has ${CRITICAL} CRITICAL findings — failing build."
+            aws ecr describe-image-scan-findings \
+              --repository-name "${REPO}" \
+              --image-id imageTag="${TAG}" \
+              --region "${AWS_REGION}" \
+              --query 'imageScanFindings.findings[?severity==`CRITICAL`].[name,description,uri]' \
+              --output table
+            exit 1
+          fi
+          echo "Scan clean for ${REPO}:${TAG} (no CRITICAL findings)."
