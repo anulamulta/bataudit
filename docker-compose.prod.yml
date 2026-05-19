@@ -1,0 +1,129 @@
+## BatAudit — Production Docker Compose (uses pre-built ECR images)
+## Usage: docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d
+##
+## Env vars required (set in /opt/bataudit/.env by EC2 user_data):
+##   ECR_REGISTRY     ex: 240806822693.dkr.ecr.us-east-1.amazonaws.com
+##   IMAGE_TAG        ex: v0.1.0
+##   POSTGRES_PASSWORD
+##   JWT_SECRET
+##   INITIAL_OWNER_EMAIL
+##   INITIAL_OWNER_PASSWORD
+##   REDIS_PASSWORD   (empty allowed)
+##   DATA_DIR         host mount for postgres data (e.g. /var/lib/bataudit)
+
+services:
+
+  postgres:
+    image: bitnami/postgresql:latest
+    container_name: bat_postgres
+    environment:
+      - POSTGRESQL_USERNAME=batuser
+      - POSTGRESQL_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRESQL_DATABASE=batdb
+    volumes:
+      - ${DATA_DIR:-/var/lib/bataudit}/postgres:/bitnami/postgresql
+    networks:
+      - bataudit-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U batuser -d batdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: bat_redis
+    networks:
+      - bataudit-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  writer:
+    image: ${ECR_REGISTRY}/anulamulta/bataudit-writer:${IMAGE_TAG}
+    container_name: bat_writer
+    environment:
+      - DB_DRIVER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=batuser
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=batdb
+      - REDIS_ADDRESS=redis:6379
+      - REDIS_DB=0
+      - JWT_SECRET=${JWT_SECRET}
+      - GIN_MODE=release
+      - INITIAL_OWNER_EMAIL=${INITIAL_OWNER_EMAIL}
+      - INITIAL_OWNER_PASSWORD=${INITIAL_OWNER_PASSWORD}
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bataudit-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8081/health || exit 1"]
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  reader:
+    image: ${ECR_REGISTRY}/anulamulta/bataudit-reader:${IMAGE_TAG}
+    container_name: bat_reader
+    environment:
+      - DB_DRIVER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=batuser
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=batdb
+      - JWT_SECRET=${JWT_SECRET}
+      - GIN_MODE=release
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bataudit-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8082/health || exit 1"]
+      interval: 10s
+      timeout: 15s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
+  worker:
+    image: ${ECR_REGISTRY}/anulamulta/bataudit-worker:${IMAGE_TAG}
+    container_name: bat_worker
+    environment:
+      - DB_DRIVER=postgres
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=batuser
+      - DB_PASSWORD=${POSTGRES_PASSWORD}
+      - DB_NAME=batdb
+      - REDIS_ADDRESS=redis:6379
+      - REDIS_DB=0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - bataudit-network
+    restart: unless-stopped
+
+networks:
+  bataudit-network:
+    driver: bridge
