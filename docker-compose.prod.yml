@@ -87,6 +87,11 @@ services:
       - DB_PASSWORD=${POSTGRES_PASSWORD}
       - DB_NAME=batdb
       - JWT_SECRET=${JWT_SECRET}
+      # Reader (não writer) chama SetupOwner() no boot — precisa destas env
+      # vars para criar o owner inicial na 1a execução.
+      - INITIAL_OWNER_EMAIL=${INITIAL_OWNER_EMAIL}
+      - INITIAL_OWNER_PASSWORD=${INITIAL_OWNER_PASSWORD}
+      - INITIAL_OWNER_NAME=${INITIAL_OWNER_NAME:-Admin}
       - GIN_MODE=release
     ports:
       - "8082:8082"
